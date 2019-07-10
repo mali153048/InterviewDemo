@@ -1,0 +1,95 @@
+using ClientMvc.Models;
+using Microsoft.Owin.Security;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Web;
+using System.Web.Mvc;
+
+namespace ClientMvc.Controllers
+{
+    public class HomeController : Controller
+    {
+        public ActionResult Index()
+        {
+            return View();
+        }
+
+        public ActionResult Register()
+        {
+            return View();
+        }
+        [HttpPost]
+        public ActionResult Register(RegisterViewModel model)
+        {
+
+            using (var client = new HttpClient())
+            {
+                client.BaseAddress = new Uri("https://localhost:44350/api/Account/");
+                var postTask = client.PostAsJsonAsync<RegisterViewModel>("Register", model);
+                postTask.Wait();
+                var result = postTask.Result;
+                if (result.IsSuccessStatusCode)
+                {
+                    return RedirectToAction("Login");
+                }
+            }
+
+            return View(model);
+        }
+
+        public ActionResult Login()
+        {
+
+
+            return View();
+        }
+        [HttpPost]
+        public ActionResult Login(RegisterViewModel model)
+        {
+            IEnumerable<OrderViewModel> orders = null;
+            var tokenUrl = "https://localhost:44350/token";
+            using (HttpClient client = new HttpClient())
+            {
+                HttpContent content = new FormUrlEncodedContent(new[]
+               {
+                    new KeyValuePair<string, string>("grant_type", "password"),
+                    new KeyValuePair<string, string>("username", model.Username),
+                    new KeyValuePair<string, string>("password", model.Password)
+                });
+
+                HttpClient client2 = new HttpClient();
+                HttpResponseMessage result = client.PostAsync(tokenUrl, content).Result;
+                //string resultContent = result.Content.ReadAsStringAsync().Result;
+                if (result.Content.ReadAsStringAsync().Result.Contains("access_token"))
+                {
+                    var tokenDetails = JsonConvert.DeserializeObject<Dictionary<string, string>>(result.Content.ReadAsStringAsync().Result);
+                    client2.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenDetails["access_token"]);
+                    client2.BaseAddress = new Uri("https://localhost:44350/api/Orders");
+                    var getTask = client2.GetAsync("getOrders");
+                    getTask.Wait();
+
+                    var result2 = getTask.Result;
+                    if (result2.IsSuccessStatusCode)
+                    {
+                        
+                        var readTask = result2.Content.ReadAsAsync<List<OrderViewModel>>();
+
+                        readTask.Wait();
+
+                        orders = readTask.Result;
+                    }
+                    return View(orders);
+                }
+
+                
+                
+                return View();
+            }
+        }
+    }
+}
